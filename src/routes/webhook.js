@@ -12,7 +12,7 @@ const setores = {
   "marketing": "5583994833333",
   "comercial setai": "5583994833333",
   "comercial reserve": "5583994833333",
-  "financeiro": "5583994833333",
+  "financeiro": "5583994833333"
 };
 
 const sessoes = {}; // Sessões por telefone
