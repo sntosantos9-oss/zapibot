@@ -5,6 +5,10 @@ const app = express();
 app.use(express.json());
 
 // Rotas
+
+const webhook = require("./routes/webhook");
+app.use("/webhook", webhook);
+
 const askRoute = require("./routes/ask");
 app.use("/ask", askRoute);
 
