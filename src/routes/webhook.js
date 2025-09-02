@@ -25,12 +25,8 @@ const identificarSetor = (texto) => {
 };
 
 const enviarDigitando = async (phone) => {
-  await axios.post(
-    `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/typing`,
-    { phone, typing: true },
-    { headers: { "client-token": CLIENT_TOKEN } }
-  );
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  // Digitando desativado conforme solicitado
+  return;
 };
 
 router.post("/", async (req, res) => {
@@ -46,7 +42,6 @@ router.post("/", async (req, res) => {
 
     // Etapa 1
     if (sessao.etapa === 1) {
-      await enviarDigitando(from);
       await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
         {
@@ -67,7 +62,6 @@ router.post("/", async (req, res) => {
 
       if (nomeDetectado && nomeDetectado !== "indefinido") {
         sessao.nome = nomeDetectado;
-        await enviarDigitando(from);
         await axios.post(
           `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
           {
@@ -91,7 +85,6 @@ router.post("/", async (req, res) => {
       const numero = setores[setor];
 
       if (setor && numero) {
-        await enviarDigitando(from);
         await axios.post(
           `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-actions`,
           {
@@ -114,10 +107,10 @@ router.post("/", async (req, res) => {
           }
         );
         sessao.etapa = 4;
+        sessao.encerramentoEnviado = false;
         sessoes[from] = sessao;
         return res.sendStatus(200);
       } else {
-        await enviarDigitando(from);
         await axios.post(
           `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
           {
@@ -135,9 +128,19 @@ router.post("/", async (req, res) => {
       const agradecimentos = ["obrigado", "obg", "valeu", "show", "fechou", "agradecido", "grato"];
       const retomadas = ["sim", "quero", "tenho", "preciso", "gostaria", "sobre", "como", "quando", "posso", "desejo"];
 
+      const palavras = text.trim().split(/\s+/);
+      const deveRetomar = retomadas.some(w => lowerText.includes(w)) || palavras.length >= 4;
+
+      if (deveRetomar) {
+        sessao.etapa = 3;
+        sessao.mensagens = [text];
+        sessao.encerramentoEnviado = false;
+        sessoes[from] = sessao;
+        return res.sendStatus(200);
+      }
+
       if (agradecimentos.some(w => lowerText.includes(w)) && !sessao.encerramentoEnviado) {
         const fraseFinal = await gerarFraseDeEncerramento(sessao.nome);
-        await enviarDigitando(from);
         await axios.post(
           `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
           {
@@ -151,24 +154,17 @@ router.post("/", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      const palavras = text.trim().split(/\s+/);
-      if (retomadas.some(w => lowerText.includes(w)) || palavras.length >= 4) {
-        sessao.etapa = 3;
-        sessao.mensagens = [text];
-        sessao.encerramentoEnviado = false;
-        sessoes[from] = sessao;
-        return res.sendStatus(200);
+      // Resposta padrão para evitar travamento
+      if (!sessao.encerramentoEnviado) {
+        await axios.post(
+          `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+          {
+            phone: from,
+            message: `Estou por aqui, ${sessao.nome}! Pode me dizer como posso te ajudar? 👇`
+          },
+          { headers: { "client-token": CLIENT_TOKEN } }
+        );
       }
-
-      await enviarDigitando(from);
-      await axios.post(
-        `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
-        {
-          phone: from,
-          message: `Estou aqui pra te ajudar! Pode me explicar melhor o que deseja? 😊`
-        },
-        { headers: { "client-token": CLIENT_TOKEN } }
-      );
 
       return res.sendStatus(200);
     }
