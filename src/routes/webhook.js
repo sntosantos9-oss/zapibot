@@ -142,12 +142,66 @@ if (sessao.etapa === 4) {
   const deveRetomar = retomadas.some(w => lowerText.includes(w)) || text.length > 5;
 
   if (deveRetomar) {
-    sessao.etapa = 3;
-    sessao.mensagens = [text];
-    sessao.encerramentoEnviado = false;
+  sessao.etapa = 3;
+  sessao.mensagens = [text];
+  sessao.encerramentoEnviado = false;
+  sessoes[from] = sessao;
+
+  // ✅ Processa imediatamente como Etapa 3:
+  const resposta = await askGemini(text);
+  const setor = identificarSetor(resposta);
+
+  if (setor) {
+    const { phone: setorPhone, image } = setores[setor];
+
+    await axios.post(
+      `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-image`,
+      {
+        phone: from,
+        image,
+        caption: `Aqui está o setor *${setor.toUpperCase()}* que pode te ajudar.`
+      },
+      { headers: { "client-token": CLIENT_TOKEN } }
+    );
+
+    await axios.post(
+      `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-actions`,
+      {
+        phone: from,
+        message: `Clique abaixo para falar com o setor de *${setor.toUpperCase()}*:`,
+        buttonActions: [
+          {
+            id: "1",
+            type: "URL",
+            url: `https://wa.me/${setorPhone}`,
+            label: `Falar com ${setor}`
+          }
+        ]
+      },
+      {
+        headers: {
+          "client-token": CLIENT_TOKEN,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    sessao.etapa = 4;
     sessoes[from] = sessao;
     return res.sendStatus(200);
+  } else {
+    await axios.post(
+      `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+      {
+        phone: from,
+        message: `Desculpe ${sessao.nome}, não entendi. Pode explicar de outro jeito? 🤔`
+      },
+      { headers: { "client-token": CLIENT_TOKEN } }
+    );
+    return res.sendStatus(200);
   }
+}
+
 
   if (agradecimentos.some(w => lowerText.includes(w)) && !sessao.encerramentoEnviado) {
     // const frase = await gerarFraseDeEncerramento(sessao.nome);
