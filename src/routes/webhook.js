@@ -11,7 +11,8 @@ const setores = {
   "rh": "5583994833333",
   "marketing": "5583994833333",
   "comercial setai": "5583994833333",
-  "comercial reserve": "5583994833333"
+  "comercial reserve": "5583994833333",
+  "financeiro": "5583994833333",
 };
 
 const sessoes = {}; // Sessões por telefone
@@ -22,10 +23,16 @@ const identificarSetor = (texto) => {
 };
 
 const extrairNome = (texto) => {
-  const regex = /(?:me chamo|sou o|sou a|meu nome[:\\s]*)?([A-ZÁ-Ú][a-zà-ú]+)/i;
+  const regex = /(?:me chamo|sou o|sou a|sou|meu nome (?:é|é:|é )?)\\s*([A-ZÁ-Ú][a-zà-ú]+)/i;
   const match = texto.match(regex);
-  return match ? match[1] : texto.split(" ")[0];
+  if (match) return match[1];
+
+  // Tenta pegar a última palavra da frase
+  const palavras = texto.trim().split(" ");
+  const ultima = palavras[palavras.length - 1];
+  return ultima.charAt(0).toUpperCase() + ultima.slice(1).toLowerCase();
 };
+
 
 const enviarDigitando = async (phone) => {
   await axios.post(
