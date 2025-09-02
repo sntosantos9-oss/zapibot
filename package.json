@@ -1,13 +1,28 @@
 {
-  "name": "zapibot",
+  "name": "gemini-bot",
   "version": "1.0.0",
-  "main": "index.js",
-  "type": "commonjs",
+  "description": "Bot com prompt interno usando Gemini (Google AI)",
+  "main": "src/app.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js"
   },
+  "keywords": [
+    "gemini",
+    "google-ai",
+    "bot",
+    "express",
+    "nodejs"
+  ],
+  "author": "Carlos Santos",
+  "license": "MIT",
   "dependencies": {
-    "axios": "^1.6.7",
-    "express": "^4.18.2"
-  }
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "type": "commonjs"
 }
