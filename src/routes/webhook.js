@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { askGemini } = require("../services/gemini");
 const { extrairNomeViaGemini } = require("../services/geminiNomeExtractor");
+const { gerarFraseDeEncerramento } = require("../services/fraseEncerramentoGemini");
 const axios = require("axios");
 
 const INSTANCE_ID = process.env.INSTANCE_ID;
@@ -16,7 +17,7 @@ const setores = {
   "financeiro": "5583994833333"
 };
 
-const sessoes = {}; // Sessões por telefone
+const sessoes = {};
 
 const identificarSetor = (texto) => {
   const lower = texto.toLowerCase();
@@ -33,9 +34,7 @@ const enviarDigitando = async (phone) => {
 };
 
 router.post("/", async (req, res) => {
-  const fromApi = req.body.fromApi;
-  const fromMe = req.body.fromMe;
-  if (fromApi || fromMe) return res.sendStatus(200);
+  if (req.body.fromApi || req.body.fromMe) return res.sendStatus(200);
 
   try {
     const from = req.body.phone;
@@ -45,8 +44,9 @@ router.post("/", async (req, res) => {
     const lowerText = text.toLowerCase();
     const sessao = sessoes[from] || { etapa: 1, nome: null, mensagens: [] };
 
-    // Etapa 1 – Perguntar nome
+    // Etapa 1
     if (sessao.etapa === 1) {
+      await enviarDigitando(from);
       await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
         {
@@ -60,15 +60,14 @@ router.post("/", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Etapa 2 – Acumular mensagens até identificar o nome
+    // Etapa 2 – Captura nome
     if (sessao.etapa === 2 && !sessao.nome) {
       sessao.mensagens.push(text);
-      const textoAcumulado = sessao.mensagens.join(" ");
-      const nomeDetectado = await extrairNomeViaGemini(textoAcumulado);
+      const nomeDetectado = await extrairNomeViaGemini(sessao.mensagens.join(" "));
 
       if (nomeDetectado && nomeDetectado !== "indefinido") {
         sessao.nome = nomeDetectado;
-
+        await enviarDigitando(from);
         await axios.post(
           `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
           {
@@ -77,7 +76,6 @@ router.post("/", async (req, res) => {
           },
           { headers: { "client-token": CLIENT_TOKEN } }
         );
-
         sessao.etapa = 3;
       }
 
@@ -85,16 +83,15 @@ router.post("/", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Etapa 3 – Interpretação com Gemini
+    // Etapa 3 – Análise da necessidade
     if (sessao.etapa === 3) {
       sessao.mensagens.push(text);
-      const mensagemCompleta = sessao.mensagens.join(" ");
-      const respostaGemini = await askGemini(mensagemCompleta);
-
+      const respostaGemini = await askGemini(sessao.mensagens.join(" "));
       const setor = identificarSetor(respostaGemini);
       const numero = setores[setor];
 
       if (setor && numero) {
+        await enviarDigitando(from);
         await axios.post(
           `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-actions`,
           {
@@ -116,16 +113,16 @@ router.post("/", async (req, res) => {
             }
           }
         );
-
         sessao.etapa = 4;
         sessoes[from] = sessao;
         return res.sendStatus(200);
       } else {
+        await enviarDigitando(from);
         await axios.post(
           `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
           {
             phone: from,
-            message: `Desculpe ${sessao.nome}, não entendi exatamente com qual setor você deseja falar. Pode explicar de outro jeito?`
+            message: `Desculpe ${sessao.nome}, ainda não consegui entender com qual setor você deseja falar. Pode reformular? 🤔`
           },
           { headers: { "client-token": CLIENT_TOKEN } }
         );
@@ -133,37 +130,35 @@ router.post("/", async (req, res) => {
       }
     }
 
-   // Etapa 4 – Aguardar agradecimento ou retorno
-if (sessao.etapa === 4) {
-  const agradecimentos = [
-    "obrigado", "obg", "valeu", "show", "ok obrigado",
-    "agradecido", "muito obrigado", "fechou", "grato"
-  ];
+    // Etapa 4 – Encerramento ou retomada
+    if (sessao.etapa === 4) {
+      const agradecimentos = ["obrigado", "obg", "valeu", "show", "fechou", "agradecido", "grato"];
+      const retomadas = ["sim", "quero", "tenho", "preciso", "gostaria"];
 
-  if (agradecimentos.some(palavra => lowerText.includes(palavra))) {
-    await enviarDigitando(from);
-    await axios.post(
-      `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
-      {
-        phone: from,
-        message: `🙏 Disponha, ${sessao.nome}! Posso te ajudar com mais alguma coisa?`
-      },
-      { headers: { "client-token": CLIENT_TOKEN } }
-    );
-    return res.sendStatus(200);
-  }
+      if (agradecimentos.some(w => lowerText.includes(w))) {
+        const fraseFinal = await gerarFraseDeEncerramento(sessao.nome);
+        await enviarDigitando(from);
+        await axios.post(
+          `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+          {
+            phone: from,
+            message: fraseFinal
+          },
+          { headers: { "client-token": CLIENT_TOKEN } }
+        );
+        return res.sendStatus(200);
+      }
 
-  // ⚠️ Evita recomeçar se a mensagem for muito curta ou sem contexto
-  if (text.length < 6) {
-    return res.sendStatus(200); // ignora
-  }
+      if (retomadas.some(w => lowerText.includes(w))) {
+        sessao.etapa = 3;
+        sessao.mensagens = [text];
+        sessoes[from] = sessao;
+        return res.sendStatus(200);
+      }
 
-  // Caso o cliente reabra com novo texto relevante
-  sessao.etapa = 3;
-  sessao.mensagens = [text];
-  sessoes[from] = sessao;
-  return res.sendStatus(200);
-}
+      // Ignora mensagens curtas tipo “ok”
+      if (text.length < 5) return res.sendStatus(200);
+    }
 
   } catch (err) {
     console.error("❌ Erro no webhook:", err.response?.data || err.message);
