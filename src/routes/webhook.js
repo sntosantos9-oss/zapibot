@@ -133,8 +133,9 @@ router.post("/", async (req, res) => {
     // Etapa 4 – Encerramento ou retomada
     if (sessao.etapa === 4) {
       const agradecimentos = ["obrigado", "obg", "valeu", "show", "fechou", "agradecido", "grato"];
-      const retomadas = ["sim", "quero", "tenho", "preciso", "gostaria"];
+      const retomadas = ["sim", "quero", "tenho", "preciso", "gostaria", "sobre", "como", "quando", "posso", "desejo"];
 
+      // Se for agradecimento → responde com frase de encerramento
       if (agradecimentos.some(w => lowerText.includes(w))) {
         const fraseFinal = await gerarFraseDeEncerramento(sessao.nome);
         await enviarDigitando(from);
@@ -149,15 +150,27 @@ router.post("/", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      if (retomadas.some(w => lowerText.includes(w))) {
+      // Se parecer continuação → retoma
+      const palavras = text.trim().split(/\s+/);
+      if (retomadas.some(w => lowerText.includes(w)) || palavras.length >= 4) {
         sessao.etapa = 3;
         sessao.mensagens = [text];
         sessoes[from] = sessao;
         return res.sendStatus(200);
       }
 
-      // Ignora mensagens curtas tipo “ok”
-      if (text.length < 5) return res.sendStatus(200);
+      // Se não entendeu nada → fallback amigável
+      await enviarDigitando(from);
+      await axios.post(
+        `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+        {
+          phone: from,
+          message: `Estou aqui pra te ajudar! Pode me explicar melhor o que deseja? 😊`
+        },
+        { headers: { "client-token": CLIENT_TOKEN } }
+      );
+
+      return res.sendStatus(200);
     }
 
   } catch (err) {
