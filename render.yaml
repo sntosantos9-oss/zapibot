@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: zapibot
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: INSTANCE_ID
+        value: sua-instancia
+      - key: TOKEN
+        value: seu-token
