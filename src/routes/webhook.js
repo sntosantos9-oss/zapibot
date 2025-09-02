@@ -133,26 +133,38 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // Etapa 4 – Aguardar agradecimento ou retorno
-    if (sessao.etapa === 4) {
-      if (["obrigado", "valeu", "agradecido", "show"].includes(lowerText)) {
-        await enviarDigitando(from);
-        await axios.post(
-          `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
-          {
-            phone: from,
-            message: `🙏 Disponha, ${sessao.nome}! Posso te ajudar com mais alguma coisa?`
-          },
-          { headers: { "client-token": CLIENT_TOKEN } }
-        );
-        return res.sendStatus(200);
-      } else {
-        sessao.etapa = 3;
-        sessao.mensagens = [text];
-        sessoes[from] = sessao;
-        return res.sendStatus(200);
-      }
-    }
+   // Etapa 4 – Aguardar agradecimento ou retorno
+if (sessao.etapa === 4) {
+  const agradecimentos = [
+    "obrigado", "obg", "valeu", "show", "ok obrigado",
+    "agradecido", "muito obrigado", "fechou", "grato"
+  ];
+
+  if (agradecimentos.some(palavra => lowerText.includes(palavra))) {
+    await enviarDigitando(from);
+    await axios.post(
+      `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+      {
+        phone: from,
+        message: `🙏 Disponha, ${sessao.nome}! Posso te ajudar com mais alguma coisa?`
+      },
+      { headers: { "client-token": CLIENT_TOKEN } }
+    );
+    return res.sendStatus(200);
+  }
+
+  // ⚠️ Evita recomeçar se a mensagem for muito curta ou sem contexto
+  if (text.length < 6) {
+    return res.sendStatus(200); // ignora
+  }
+
+  // Caso o cliente reabra com novo texto relevante
+  sessao.etapa = 3;
+  sessao.mensagens = [text];
+  sessoes[from] = sessao;
+  return res.sendStatus(200);
+}
+
   } catch (err) {
     console.error("❌ Erro no webhook:", err.response?.data || err.message);
     res.status(500).json({ error: "Erro no webhook" });
