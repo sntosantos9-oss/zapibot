@@ -14,7 +14,7 @@ const setores = {
   "comercial reserve": "5583994833333"
 };
 
-// Função para detectar setor mencionado no texto
+// Detecta setor mencionado no texto
 const identificarSetor = (resposta) => {
   const normalizado = resposta.toLowerCase();
   return Object.keys(setores).find((setor) => normalizado.includes(setor)) || null;
@@ -37,7 +37,7 @@ router.post("/", async (req, res) => {
     const numero = setores[setor];
 
     if (setor && numero) {
-      // Envia a resposta do Gemini + botão via Z-API
+      // Envia mensagem + botão
       await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-actions`,
         {
@@ -60,23 +60,21 @@ router.post("/", async (req, res) => {
         }
       );
 
-      console.log(`✅ Mensagem e botão enviados: ${setor}`);
+      console.log(`✅ Resposta com botão enviada: ${setor}`);
     } else {
-      // Fallback: mensagem padrão
+      // Só envia texto, sem botão
       await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
         {
           phone: from,
-          message: "🤖 Ainda não consegui identificar o setor ideal. Pode explicar um pouco melhor sua necessidade?"
+          message: resposta
         },
         {
-          headers: {
-            "client-token": CLIENT_TOKEN
-          }
+          headers: { "client-token": CLIENT_TOKEN }
         }
       );
 
-      console.log(`⚠️ Setor não identificado na resposta: ${resposta}`);
+      console.log(`✅ Resposta cordial enviada (sem setor):`, resposta);
     }
 
     res.sendStatus(200);
