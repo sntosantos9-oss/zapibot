@@ -134,8 +134,23 @@ router.post("/", async (req, res) => {
     // Etapa 4 – Encerramento ou retomada
     if (sessao.etapa === 4) {
       const agradecimentos = ["obrigado", "obg", "valeu", "show", "fechou", "agradecido", "grato"];
-      const retomadas = ["sim", "quero", "tenho", "preciso", "gostaria", "sobre", "como", "quando", "posso", "desejo"];
+      const retomadas = ["sim", "quero", "tenho", "preciso", "gostaria", "sobre", "como", "quando", "posso", "desejo", "dúvida", "perguntar", "ajuda"];
 
+      const palavras = text.trim().split(/\s+/);
+
+      // 🔁 Retomar se parecer nova dúvida
+      if (
+        retomadas.some(w => lowerText.includes(w)) ||
+        palavras.length >= 4
+      ) {
+        sessao.etapa = 3;
+        sessao.mensagens = [text];
+        sessao.encerramentoEnviado = false;
+        sessoes[from] = sessao;
+        return res.sendStatus(200);
+      }
+
+      // 🙏 Encerra se agradecimento e ainda não respondeu
       if (agradecimentos.some(w => lowerText.includes(w)) && !sessao.encerramentoEnviado) {
         const fraseFinal = await gerarFraseDeEncerramento(sessao.nome);
         await enviarDigitando(from);
@@ -152,15 +167,7 @@ router.post("/", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      const palavras = text.trim().split(/\s+/);
-      if (retomadas.some(w => lowerText.includes(w)) || palavras.length >= 4) {
-        sessao.etapa = 3;
-        sessao.mensagens = [text];
-        sessao.encerramentoEnviado = false;
-        sessoes[from] = sessao;
-        return res.sendStatus(200);
-      }
-
+      // Fallback simpático
       await enviarDigitando(from);
       await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
