@@ -1,5 +1,3 @@
-// ✅ Estrutura de atendimento em etapas (nome -> necessidade -> direcionamento)
-
 const express = require("express");
 const router = express.Router();
 const { askGemini } = require("../services/gemini");
@@ -16,12 +14,26 @@ const setores = {
   "comercial reserve": "5583994833333"
 };
 
-// Sessões de atendimento por telefone
-const sessoes = {}; // { [telefone]: { etapa, nome, mensagens: [] } }
+const sessoes = {}; // Sessões por telefone
 
 const identificarSetor = (texto) => {
   const lower = texto.toLowerCase();
   return Object.keys(setores).find((s) => lower.includes(s)) || null;
+};
+
+const extrairNome = (texto) => {
+  const regex = /(?:me chamo|sou o|sou a|meu nome[:\\s]*)?([A-ZÁ-Ú][a-zà-ú]+)/i;
+  const match = texto.match(regex);
+  return match ? match[1] : texto.split(" ")[0];
+};
+
+const enviarDigitando = async (phone) => {
+  await axios.post(
+    `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/typing`,
+    { phone, typing: true },
+    { headers: { "client-token": CLIENT_TOKEN } }
+  );
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 };
 
 router.post("/", async (req, res) => {
@@ -34,36 +46,41 @@ router.post("/", async (req, res) => {
     const text = req.body.text?.message?.trim();
     if (!from || !text) return res.sendStatus(400);
 
+    const lowerText = text.toLowerCase();
     const sessao = sessoes[from] || { etapa: 1, nome: null, mensagens: [] };
 
-    // Etapa 1: perguntar nome
+    // Etapa 1 – Perguntar nome
     if (sessao.etapa === 1) {
-      await axios.post(`https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`, {
-        phone: from,
-        message: "👋 Olá! Sou a assistente virtual da SETAI. Qual o seu nome para que eu possa te atender melhor?"
-      }, {
-        headers: { "client-token": CLIENT_TOKEN }
-      });
+      await axios.post(
+        `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+        {
+          phone: from,
+          message: "👋 Olá! Sou a assistente virtual da SETAI. Qual o seu nome para que eu possa te atender melhor?"
+        },
+        { headers: { "client-token": CLIENT_TOKEN } }
+      );
       sessao.etapa = 2;
       sessoes[from] = sessao;
       return res.sendStatus(200);
     }
 
-    // Etapa 2: capturar nome e perguntar objetivo
+    // Etapa 2 – Captura nome e pergunta objetivo
     if (sessao.etapa === 2 && !sessao.nome) {
-      sessao.nome = text.split(" ")[0];
-      await axios.post(`https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`, {
-        phone: from,
-        message: `Prazer, ${sessao.nome}! 😊 Como posso te ajudar hoje?`
-      }, {
-        headers: { "client-token": CLIENT_TOKEN }
-      });
+      sessao.nome = extrairNome(text);
+      await axios.post(
+        `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+        {
+          phone: from,
+          message: `Prazer, ${sessao.nome}! 😊 Como posso te ajudar hoje?`
+        },
+        { headers: { "client-token": CLIENT_TOKEN } }
+      );
       sessao.etapa = 3;
       sessoes[from] = sessao;
       return res.sendStatus(200);
     }
 
-    // Etapa 3: entender a necessidade
+    // Etapa 3 – Interpretação com Gemini
     if (sessao.etapa === 3) {
       sessao.mensagens.push(text);
       const mensagemCompleta = sessao.mensagens.join(" ");
@@ -73,52 +90,58 @@ router.post("/", async (req, res) => {
       const numero = setores[setor];
 
       if (setor && numero) {
-        await axios.post(`https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-actions`, {
-          phone: from,
-          message: `Perfeito, ${sessao.nome}! Pelo que entendi, o melhor setor para te ajudar é *${setor.toUpperCase()}*. Clique abaixo para falar com eles:`,
-          buttonActions: [
-            {
-              id: "1",
-              type: "URL",
-              url: `https://wa.me/${numero}`,
-              label: `Falar com ${setor}`
+        await axios.post(
+          `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-actions`,
+          {
+            phone: from,
+            message: `Perfeito, ${sessao.nome}! Pelo que entendi, o melhor setor para te ajudar é *${setor.toUpperCase()}*. Clique abaixo para falar com eles:`,
+            buttonActions: [
+              {
+                id: "1",
+                type: "URL",
+                url: `https://wa.me/${numero}`,
+                label: `Falar com ${setor}`
+              }
+            ]
+          },
+          {
+            headers: {
+              "client-token": CLIENT_TOKEN,
+              "Content-Type": "application/json"
             }
-          ]
-        }, {
-          headers: {
-            "client-token": CLIENT_TOKEN,
-            "Content-Type": "application/json"
           }
-        });
+        );
 
-        sessao.etapa = 4; // conversa encaminhada
+        sessao.etapa = 4; // encaminhado
         sessoes[from] = sessao;
         return res.sendStatus(200);
       } else {
-        // Ainda não entendeu
-        await axios.post(`https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`, {
-          phone: from,
-          message: `Desculpe ${sessao.nome}, não entendi exatamente com qual setor você deseja falar. Pode explicar de outro jeito?`
-        }, {
-          headers: { "client-token": CLIENT_TOKEN }
-        });
+        await axios.post(
+          `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+          {
+            phone: from,
+            message: `Desculpe ${sessao.nome}, não entendi exatamente com qual setor você deseja falar. Pode explicar de outro jeito?`
+          },
+          { headers: { "client-token": CLIENT_TOKEN } }
+        );
         return res.sendStatus(200);
       }
     }
 
-    // Etapa 4: aguardar agradecimento ou novas perguntas
+    // Etapa 4 – Aguardar agradecimento ou reabertura
     if (sessao.etapa === 4) {
-      if (["obrigado", "valeu", "agradecido", "show"].includes(text.toLowerCase())) {
-        await axios.post(`https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`, {
-          phone: from,
-          message: `Fico feliz em ajudar, ${sessao.nome}! 😊 Estou por aqui caso precise de algo mais.`
-        }, {
-          headers: { "client-token": CLIENT_TOKEN }
-        });
-        delete sessoes[from];
+      if (["obrigado", "valeu", "agradecido", "show"].includes(lowerText)) {
+        await enviarDigitando(from);
+        await axios.post(
+          `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+          {
+            phone: from,
+            message: `🙏 Disponha, ${sessao.nome}! Posso te ajudar com mais alguma coisa?`
+          },
+          { headers: { "client-token": CLIENT_TOKEN } }
+        );
         return res.sendStatus(200);
       } else {
-        // Se mandar nova necessidade, retorna atendimento
         sessao.etapa = 3;
         sessao.mensagens = [text];
         sessoes[from] = sessao;

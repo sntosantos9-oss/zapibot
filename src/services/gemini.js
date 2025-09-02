@@ -24,7 +24,9 @@ Exemplo:
 "Claro! O setor de *marketing* é quem pode te ajudar com isso. 😊"
 
 A resposta deve ser educada, simpática e conter o nome do setor entre asteriscos ou em destaque.
-`; // NÃO retornar somente o nome do setor seco!
+Se o setor não for identificável, responda com:
+"Desculpe, ainda não consegui identificar o setor ideal. Pode me dar mais informações?"
+`;
 
 async function askGemini(userMessage) {
   try {
