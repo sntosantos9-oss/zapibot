@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const axios = require("axios");
-const { extrairNomeViaGemini, gerarFraseDeEncerramento, classificarIntencao } = require("../services/interpretadorGemini");
+const { extrairNomeViaGemini, gerarFraseDeEncerramento } = require("../services/interpretadorGemini");
 
 const INSTANCE_ID = process.env.INSTANCE_ID;
 const TOKEN = process.env.TOKEN;
