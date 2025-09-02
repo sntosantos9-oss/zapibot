@@ -134,36 +134,47 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // Etapa 4: encerramento ou retomada
-    if (sessao.etapa === 4) {
-      const agradecimentos = ["obrigado", "valeu", "show", "agradecido"];
-      const reabrir = ["sim", "quero", "preciso", "sobre", "gostaria"];
+    // Etapa 4 – encerramento ou retomada
+if (sessao.etapa === 4) {
+  const agradecimentos = ["obrigado", "obg", "valeu", "show", "fechou", "agradecido", "grato"];
+  const retomadas = ["sim", "quero", "tenho", "preciso", "gostaria", "sobre", "como", "quando", "posso", "desejo"];
 
-      if (reabrir.some(w => lowerText.includes(w))) {
-        sessao.etapa = 3;
-        sessao.mensagens = [text];
-        sessao.encerramentoEnviado = false;
-        sessoes[from] = sessao;
-        return res.sendStatus(200);
-      }
+  const deveRetomar = retomadas.some(w => lowerText.includes(w)) || text.length > 5;
 
-      if (agradecimentos.some(w => lowerText.includes(w)) && !sessao.encerramentoEnviado) {
-        const frase = await gerarFraseDeEncerramento(sessao.nome);
-        await axios.post(`https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
-          { phone: from, message: frase },
-          { headers: { "client-token": CLIENT_TOKEN } }
-        );
-        sessao.encerramentoEnviado = true;
-        sessoes[from] = sessao;
-        return res.sendStatus(200);
-      }
+  if (deveRetomar) {
+    sessao.etapa = 3;
+    sessao.mensagens = [text];
+    sessao.encerramentoEnviado = false;
+    sessoes[from] = sessao;
+    return res.sendStatus(200);
+  }
 
-      await axios.post(`https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
-        { phone: from, message: `Estou por aqui, ${sessao.nome}! Como posso ajudar mais?` },
-        { headers: { "client-token": CLIENT_TOKEN } }
-      );
-      return res.sendStatus(200);
-    }
+  if (agradecimentos.some(w => lowerText.includes(w)) && !sessao.encerramentoEnviado) {
+    const frase = await gerarFraseDeEncerramento(sessao.nome);
+    await axios.post(
+      `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+      { phone: from, message: frase },
+      { headers: { "client-token": CLIENT_TOKEN } }
+    );
+    sessao.encerramentoEnviado = true;
+    sessoes[from] = sessao;
+    return res.sendStatus(200);
+  }
+
+  // ⚠️ Se nenhuma das condições for satisfeita,
+  // responda algo mesmo assim para evitar travamento
+  await axios.post(
+    `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+    {
+      phone: from,
+      message: `Estou por aqui, ${sessao.nome}! Precisa de mais alguma coisa? 😊`
+    },
+    { headers: { "client-token": CLIENT_TOKEN } }
+  );
+
+  return res.sendStatus(200);
+}
+
 
   } catch (err) {
     console.error("❌ Erro no webhook:", err.response?.data || err.message);
