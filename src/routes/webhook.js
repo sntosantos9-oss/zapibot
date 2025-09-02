@@ -42,7 +42,7 @@ router.post("/", async (req, res) => {
     if (!from || !text) return res.sendStatus(400);
 
     const lowerText = text.toLowerCase();
-    const sessao = sessoes[from] || { etapa: 1, nome: null, mensagens: [] };
+    const sessao = sessoes[from] || { etapa: 1, nome: null, mensagens: [], encerramentoEnviado: false };
 
     // Etapa 1
     if (sessao.etapa === 1) {
@@ -114,6 +114,7 @@ router.post("/", async (req, res) => {
           }
         );
         sessao.etapa = 4;
+        sessao.encerramentoEnviado = false;
         sessoes[from] = sessao;
         return res.sendStatus(200);
       } else {
@@ -135,8 +136,7 @@ router.post("/", async (req, res) => {
       const agradecimentos = ["obrigado", "obg", "valeu", "show", "fechou", "agradecido", "grato"];
       const retomadas = ["sim", "quero", "tenho", "preciso", "gostaria", "sobre", "como", "quando", "posso", "desejo"];
 
-      // Se for agradecimento → responde com frase de encerramento
-      if (agradecimentos.some(w => lowerText.includes(w))) {
+      if (agradecimentos.some(w => lowerText.includes(w)) && !sessao.encerramentoEnviado) {
         const fraseFinal = await gerarFraseDeEncerramento(sessao.nome);
         await enviarDigitando(from);
         await axios.post(
@@ -147,19 +147,20 @@ router.post("/", async (req, res) => {
           },
           { headers: { "client-token": CLIENT_TOKEN } }
         );
-        return res.sendStatus(200);
-      }
-
-      // Se parecer continuação → retoma
-      const palavras = text.trim().split(/\s+/);
-      if (retomadas.some(w => lowerText.includes(w)) || palavras.length >= 4) {
-        sessao.etapa = 3;
-        sessao.mensagens = [text];
+        sessao.encerramentoEnviado = true;
         sessoes[from] = sessao;
         return res.sendStatus(200);
       }
 
-      // Se não entendeu nada → fallback amigável
+      const palavras = text.trim().split(/\s+/);
+      if (retomadas.some(w => lowerText.includes(w)) || palavras.length >= 4) {
+        sessao.etapa = 3;
+        sessao.mensagens = [text];
+        sessao.encerramentoEnviado = false;
+        sessoes[from] = sessao;
+        return res.sendStatus(200);
+      }
+
       await enviarDigitando(from);
       await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
