@@ -6,6 +6,15 @@ const axios = require("axios");
 const INSTANCE_ID = process.env.INSTANCE_ID;
 const TOKEN = process.env.TOKEN;
 const CLIENT_TOKEN = process.env.CLIENT_TOKEN;
+const fromApi = req.body.fromApi;
+const fromMe = req.body.fromMe;
+
+if (fromApi || fromMe) {
+  console.log("🔁 Ignorado: mensagem enviada pelo próprio bot (loop)");
+  return res.sendStatus(200);
+}
+
+
 
 router.post("/", async (req, res) => {
   console.log("📩 Webhook recebido:");
@@ -14,6 +23,7 @@ router.post("/", async (req, res) => {
   try {
     const from = req.body.phone;
     const text = req.body.text?.message;
+    
 
     if (!from || !text) {
       console.log("❗ Mensagem não processada (sem 'phone' ou 'text.message'):", req.body);
