@@ -150,7 +150,7 @@ if (sessao.etapa === 4) {
   }
 
   if (agradecimentos.some(w => lowerText.includes(w)) && !sessao.encerramentoEnviado) {
-    const frase = await gerarFraseDeEncerramento(sessao.nome);
+    // const frase = await gerarFraseDeEncerramento(sessao.nome);
     await axios.post(
       `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
       { phone: from, message: frase },
