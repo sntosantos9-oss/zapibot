@@ -22,10 +22,19 @@ router.post("/", async (req, res) => {
     // Envia a resposta de volta pelo WhatsApp via Z-API
     const url = `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`;
 
-    await axios.post(url, {
-      phone: from,
-      message: resposta,
-    });
+    await axios.post(
+  `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+  {
+    phone: from,
+    message: resposta,
+  },
+  {
+    headers: {
+      "client-token": process.env.CLIENT_TOKEN,
+    },
+  }
+);
+
 
     res.sendStatus(200);
   } catch (err) {
