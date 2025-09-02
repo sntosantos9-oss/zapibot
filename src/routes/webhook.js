@@ -7,6 +7,7 @@ const INSTANCE_ID = process.env.INSTANCE_ID;
 const TOKEN = process.env.TOKEN;
 const CLIENT_TOKEN = process.env.CLIENT_TOKEN;
 
+// Setores disponíveis
 const setores = {
   "rh": "5583994833333",
   "marketing": "5583994833333",
@@ -14,63 +15,92 @@ const setores = {
   "comercial reserve": "5583994833333"
 };
 
-// 🎨 Modelos de mensagem formatada
-const frasesDeEncaminhamento = (setor, numero) => {
-  const nomeMaiusculo = setor.toUpperCase();
-  const nomeCapitalizado = setor[0].toUpperCase() + setor.slice(1);
-  return [
-    `✅ Tudo certo! Clique no botão abaixo para falar com nosso setor **${nomeMaiusculo}**.`,
-    `👉 Perfeito! Já vou te redirecionar para o setor de *${nomeCapitalizado}*.`,
-    `🧭 Localizei o setor ideal para você: *${nomeCapitalizado}*. Toque no botão e siga com o atendimento.`,
-    `🤖 Encaminhando você para o setor correto: *${nomeMaiusculo}*.`,
-    `🎯 Achei que o setor *${nomeCapitalizado}* é o mais indicado. Vamos lá?`
-  ].map(texto => ({
-    message: texto,
-    buttonLabel: `Falar com ${setor}`,
-    url: `https://wa.me/${numero}`
-  }));
+// Sessões temporárias por número (em memória)
+const sessaoUsuarios = {};
+
+// Delay em milissegundos para esperar mensagens picadas
+const DELAY_MILIS = 3000;
+
+// 🎯 Modelos de mensagens de encaminhamento com encerramento
+const gerarMensagem = (setor) => {
+  const modelos = [
+    `😄 Tudo certo! Vou te redirecionar ao setor de *${setor.toUpperCase()}*.\nSe precisar de algo mais, fico à disposição!`,
+    `🤖 Entendido! O setor de *${setor}* é quem pode te atender melhor.\nQualquer dúvida, me chame novamente.`,
+    `📍 Encaminhando para o time de *${setor}*.\nEstou por aqui caso precise de mais alguma coisa.`,
+    `✅ Pronto! Clique no botão abaixo para falar com *${setor}*.\nEstou à disposição para ajudar com o que for necessário.`,
+    `🧭 Já direcionei você ao setor *${setor.toUpperCase()}*.\nSe tiver mais alguma dúvida, é só me chamar!`
+  ];
+  return modelos[Math.floor(Math.random() * modelos.length)];
 };
 
 router.post("/", async (req, res) => {
-  console.log("📩 Webhook recebido:");
-  console.dir(req.body, { depth: null });
-
   const fromApi = req.body.fromApi;
   const fromMe = req.body.fromMe;
-  if (fromApi || fromMe) {
-    console.log("🔁 Ignorado: mensagem enviada pelo próprio bot");
-    return res.sendStatus(200);
-  }
+  if (fromApi || fromMe) return res.sendStatus(200);
 
   try {
     const from = req.body.phone;
     const text = req.body.text?.message;
+    if (!from || !text) return res.status(400).json({ error: "Mensagem inválida" });
 
-    if (!from || !text) {
-      console.log("❗ Mensagem inválida:", req.body);
-      return res.status(400).json({ error: "Mensagem inválida" });
+    const agora = Date.now();
+    const sessao = sessaoUsuarios[from] || {
+      mensagens: [],
+      ultimaMensagem: 0,
+      saudado: false
+    };
+
+    // 👋 Cumprimentar o usuário uma única vez
+    if (!sessao.saudado) {
+      await axios.post(
+        `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+        {
+          phone: from,
+          message:
+            "👋 Olá! Seja bem-vindo(a) à SETAI.\nSou sua assistente virtual e vou te ajudar a encontrar o setor ideal para sua necessidade. Pode me contar o que você precisa?"
+        },
+        {
+          headers: { "client-token": CLIENT_TOKEN }
+        }
+      );
+      sessao.saudado = true;
     }
 
-    const resposta = await askGemini(text); // ex: "rh", "marketing"
+    // Armazena mensagem e tempo
+    sessao.mensagens.push(text);
+    const tempoDesdeUltima = agora - sessao.ultimaMensagem;
+    sessao.ultimaMensagem = agora;
+    sessaoUsuarios[from] = sessao;
+
+    // ⏳ Aguarda se a última mensagem foi há pouco tempo
+    if (tempoDesdeUltima < DELAY_MILIS) {
+      console.log(`⌛ Aguardando mais mensagens de ${from}...`);
+      return res.sendStatus(200);
+    }
+
+    // 🧠 Quando passar o delay, analisa a conversa completa
+    const mensagemCompleta = sessao.mensagens.join(" ");
+    const resposta = await askGemini(mensagemCompleta);
+
+    // 🔁 Limpa a sessão
+    delete sessaoUsuarios[from];
 
     const setor = resposta.toLowerCase().trim();
     const numeroSetor = setores[setor];
 
     if (numeroSetor) {
-      const mensagens = frasesDeEncaminhamento(setor, numeroSetor);
-      const aleatoria = mensagens[Math.floor(Math.random() * mensagens.length)];
-
-      const zapiRes = await axios.post(
+      const mensagem = gerarMensagem(setor);
+      await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-actions`,
         {
           phone: from,
-          message: aleatoria.message,
+          message: mensagem,
           buttonActions: [
             {
               id: "1",
               type: "URL",
-              url: aleatoria.url,
-              label: aleatoria.buttonLabel
+              url: `https://wa.me/${numeroSetor}`,
+              label: `Falar com ${setor}`
             }
           ]
         },
@@ -82,24 +112,21 @@ router.post("/", async (req, res) => {
         }
       );
 
-      console.log("📤 Botão enviado:", zapiRes.data);
+      console.log(`✅ Redirecionado para setor: ${setor}`);
     } else {
-      // fallback caso Gemini retorne "indefinido"
       await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
         {
           phone: from,
           message:
-            "Desculpe, ainda não consegui entender para qual setor você gostaria de ser direcionado. Pode reformular sua mensagem? 🤔"
+            "🤖 Ainda não entendi com qual setor você deseja falar. Pode reformular sua mensagem com mais detalhes?"
         },
         {
-          headers: {
-            "client-token": CLIENT_TOKEN
-          }
+          headers: { "client-token": CLIENT_TOKEN }
         }
       );
 
-      console.log("⚠️ Setor não reconhecido:", resposta);
+      console.log("⚠️ Setor indefinido:", resposta);
     }
 
     res.sendStatus(200);

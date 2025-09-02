@@ -1,29 +1,25 @@
 const axios = require("axios");
 
-
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
+const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const SYSTEM_PROMPT = `
-Você é o recepcionista virtual da empresa SETAI.
-Sua única função é identificar para qual dos setores o cliente deseja ser redirecionado.
+Você é um recepcionista virtual cordial da empresa SETAI.
 
-Seja cordial, humano e breve, mas nunca inicie conversa por conta própria.
-Não tente ajudar além disso, e não responda dúvidas sobre a empresa, produtos, processos internos ou documentos.
+Sua única função é analisar a conversa do cliente e determinar para qual dos setores da empresa ele deve ser encaminhado.
 
-Setores disponíveis:
+Você nunca deve responder diretamente às dúvidas, nem inventar informações.  
+Sua resposta deve conter **apenas** o nome do setor em minúsculo, sem pontuação ou frases completas.
+
+Setores válidos:
 - rh
 - marketing
 - comercial setai
 - comercial reserve
 
-Ao receber a mensagem do usuário:
-1. Identifique o setor desejado com base no conteúdo.
-2. Retorne apenas o NOME do setor em letras minúsculas (sem frases completas), por exemplo: "rh"
-3. Nada além do nome do setor deve ser incluído na resposta.
+Se não conseguir identificar claramente o setor, responda exatamente:
 
-
+indefinido
 `;
 
 async function askGemini(userMessage) {
@@ -32,14 +28,8 @@ async function askGemini(userMessage) {
       `${GEMINI_URL}?key=${GEMINI_API_KEY}`,
       {
         contents: [
-          {
-            role: "user",
-            parts: [{ text: SYSTEM_PROMPT }]
-          },
-          {
-            role: "user",
-            parts: [{ text: userMessage }]
-          }
+          { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
+          { role: "user", parts: [{ text: userMessage }] }
         ]
       },
       {
@@ -50,8 +40,8 @@ async function askGemini(userMessage) {
     );
 
     return (
-      response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "Desculpe, não consegui gerar uma resposta."
+      response.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ||
+      "indefinido"
     );
   } catch (err) {
     console.error("❌ Erro Gemini:", err.response?.data || err.message);
