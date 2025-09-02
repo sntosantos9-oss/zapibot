@@ -1,12 +1,8 @@
 const axios = require("axios");
 
-// Lê a variável de ambiente da API do Gemini
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent";
 
-// Endpoint correto para o modelo Gemini Pro
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
-
-// Prompt interno (ajuste livre conforme o papel da IA)
 const SYSTEM_PROMPT = `
 Você é uma concierge especializada no aluguel de flats em João Pessoa.
 Responda de forma clara, educada e útil.
