@@ -3,12 +3,10 @@ const router = express.Router();
 const { askGemini } = require("../services/gemini");
 const axios = require("axios");
 
-// 🔐 Tokens da Z-API
 const INSTANCE_ID = process.env.INSTANCE_ID;
 const TOKEN = process.env.TOKEN;
 const CLIENT_TOKEN = process.env.CLIENT_TOKEN;
 
-// 🎯 Mapeamento dos setores da SETAI
 const setores = {
   "rh": "5583994833333",
   "marketing": "5583994833333",
@@ -16,15 +14,29 @@ const setores = {
   "comercial reserve": "5583994833333"
 };
 
-// 📩 Rota de recebimento de mensagens via Z-API
+// 🎨 Modelos de mensagem formatada
+const frasesDeEncaminhamento = (setor, numero) => {
+  const nomeMaiusculo = setor.toUpperCase();
+  const nomeCapitalizado = setor[0].toUpperCase() + setor.slice(1);
+  return [
+    `✅ Tudo certo! Clique no botão abaixo para falar com nosso setor **${nomeMaiusculo}**.`,
+    `👉 Perfeito! Já vou te redirecionar para o setor de *${nomeCapitalizado}*.`,
+    `🧭 Localizei o setor ideal para você: *${nomeCapitalizado}*. Toque no botão e siga com o atendimento.`,
+    `🤖 Encaminhando você para o setor correto: *${nomeMaiusculo}*.`,
+    `🎯 Achei que o setor *${nomeCapitalizado}* é o mais indicado. Vamos lá?`
+  ].map(texto => ({
+    message: texto,
+    buttonLabel: `Falar com ${setor}`,
+    url: `https://wa.me/${numero}`
+  }));
+};
+
 router.post("/", async (req, res) => {
   console.log("📩 Webhook recebido:");
   console.dir(req.body, { depth: null });
 
   const fromApi = req.body.fromApi;
   const fromMe = req.body.fromMe;
-
-  // 🛡️ Evita loops (mensagens enviadas pelo próprio bot)
   if (fromApi || fromMe) {
     console.log("🔁 Ignorado: mensagem enviada pelo próprio bot");
     return res.sendStatus(200);
@@ -39,25 +51,26 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Mensagem inválida" });
     }
 
-    // 🧠 Chamada ao Gemini para identificar o setor
-    const resposta = await askGemini(text); // Esperado: "rh", "marketing", etc.
+    const resposta = await askGemini(text); // ex: "rh", "marketing"
 
     const setor = resposta.toLowerCase().trim();
     const numeroSetor = setores[setor];
 
     if (numeroSetor) {
-      // ✅ Envio de botão com link via /send-button-actions
+      const mensagens = frasesDeEncaminhamento(setor, numeroSetor);
+      const aleatoria = mensagens[Math.floor(Math.random() * mensagens.length)];
+
       const zapiRes = await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-actions`,
         {
           phone: from,
-          message: `Clique no botão abaixo para falar com o setor **${setor.toUpperCase()}**:`,
+          message: aleatoria.message,
           buttonActions: [
             {
               id: "1",
               type: "URL",
-              url: `https://wa.me/${numeroSetor}`,
-              label: `Falar com ${setor}`
+              url: aleatoria.url,
+              label: aleatoria.buttonLabel
             }
           ]
         },
@@ -69,16 +82,15 @@ router.post("/", async (req, res) => {
         }
       );
 
-      console.log("📤 Resposta da Z-API:", zapiRes.data);
-      console.log("✅ Botão enviado para redirecionar ao setor:", setor);
+      console.log("📤 Botão enviado:", zapiRes.data);
     } else {
-      // 🚫 Fallback se o setor não for identificado
+      // fallback caso Gemini retorne "indefinido"
       await axios.post(
         `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
         {
           phone: from,
           message:
-            "Desculpe, não consegui identificar o setor que você deseja falar. Tente algo como: 'quero falar com o RH'."
+            "Desculpe, ainda não consegui entender para qual setor você gostaria de ser direcionado. Pode reformular sua mensagem? 🤔"
         },
         {
           headers: {
@@ -87,13 +99,13 @@ router.post("/", async (req, res) => {
         }
       );
 
-      console.log("⚠️ Setor não reconhecido na resposta do Gemini:", resposta);
+      console.log("⚠️ Setor não reconhecido:", resposta);
     }
 
     res.sendStatus(200);
   } catch (err) {
     console.error("❌ Erro no webhook:", err.response?.data || err.message);
-    res.status(500).json({ error: "Erro no processamento do webhook" });
+    res.status(500).json({ error: "Erro no webhook" });
   }
 });
 
