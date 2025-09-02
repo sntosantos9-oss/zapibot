@@ -1,11 +1,16 @@
 const axios = require("axios");
 
+// Lê a variável de ambiente da API do Gemini
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// Endpoint correto para o modelo Gemini Pro
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
 
+// Prompt interno (ajuste livre conforme o papel da IA)
 const SYSTEM_PROMPT = `
-Você é uma concierge especializada em aluguel de flats em João Pessoa. 
-Responda perguntas de forma educada, clara, e sempre pergunte pelo número do interessado no final, se ainda não tiver sido informado.
+Você é uma concierge especializada no aluguel de flats em João Pessoa.
+Responda de forma clara, educada e útil.
+Quando possível, incentive o cliente a informar o número de telefone para contato ou WhatsApp.
 `;
 
 async function askGemini(userMessage) {
@@ -23,7 +28,7 @@ async function askGemini(userMessage) {
       }
     );
 
-    return response.data.candidates?.[0]?.content?.parts?.[0]?.text || "Não consegui gerar uma resposta.";
+    return response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "Desculpe, não consegui gerar uma resposta.";
   } catch (err) {
     console.error("Erro Gemini:", err.response?.data || err.message);
     throw new Error("Erro ao consultar Gemini.");
