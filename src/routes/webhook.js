@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { askGemini } = require("../services/gemini");
+const { extrairNomeViaGemini } = require("../services/geminiNomeExtractor");
 const axios = require("axios");
 
 const INSTANCE_ID = process.env.INSTANCE_ID;
@@ -21,18 +22,6 @@ const identificarSetor = (texto) => {
   const lower = texto.toLowerCase();
   return Object.keys(setores).find((s) => lower.includes(s)) || null;
 };
-
-const extrairNome = (texto) => {
-  const regex = /(?:me chamo|sou o|sou a|sou|meu nome (?:é|é:|é )?)\\s*([A-ZÁ-Ú][a-zà-ú]+)/i;
-  const match = texto.match(regex);
-  if (match) return match[1];
-
-  // Tenta pegar a última palavra da frase
-  const palavras = texto.trim().split(" ");
-  const ultima = palavras[palavras.length - 1];
-  return ultima.charAt(0).toUpperCase() + ultima.slice(1).toLowerCase();
-};
-
 
 const enviarDigitando = async (phone) => {
   await axios.post(
@@ -71,18 +60,27 @@ router.post("/", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Etapa 2 – Captura nome e pergunta objetivo
+    // Etapa 2 – Acumular mensagens até identificar o nome
     if (sessao.etapa === 2 && !sessao.nome) {
-      sessao.nome = extrairNome(text);
-      await axios.post(
-        `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
-        {
-          phone: from,
-          message: `Prazer, ${sessao.nome}! 😊 Como posso te ajudar hoje?`
-        },
-        { headers: { "client-token": CLIENT_TOKEN } }
-      );
-      sessao.etapa = 3;
+      sessao.mensagens.push(text);
+      const textoAcumulado = sessao.mensagens.join(" ");
+      const nomeDetectado = await extrairNomeViaGemini(textoAcumulado);
+
+      if (nomeDetectado && nomeDetectado !== "indefinido") {
+        sessao.nome = nomeDetectado;
+
+        await axios.post(
+          `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
+          {
+            phone: from,
+            message: `Prazer, ${sessao.nome}! 😊 Como posso te ajudar hoje?`
+          },
+          { headers: { "client-token": CLIENT_TOKEN } }
+        );
+
+        sessao.etapa = 3;
+      }
+
       sessoes[from] = sessao;
       return res.sendStatus(200);
     }
@@ -119,7 +117,7 @@ router.post("/", async (req, res) => {
           }
         );
 
-        sessao.etapa = 4; // encaminhado
+        sessao.etapa = 4;
         sessoes[from] = sessao;
         return res.sendStatus(200);
       } else {
@@ -135,7 +133,7 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // Etapa 4 – Aguardar agradecimento ou reabertura
+    // Etapa 4 – Aguardar agradecimento ou retorno
     if (sessao.etapa === 4) {
       if (["obrigado", "valeu", "agradecido", "show"].includes(lowerText)) {
         await enviarDigitando(from);
