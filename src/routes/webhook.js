@@ -6,6 +6,13 @@ const axios = require("axios");
 const INSTANCE_ID = process.env.INSTANCE_ID;
 const TOKEN = process.env.TOKEN;
 const CLIENT_TOKEN = process.env.CLIENT_TOKEN;
+
+
+
+router.post("/", async (req, res) => {
+  console.log("📩 Webhook recebido:");
+  console.dir(req.body, { depth: null });
+
 const fromApi = req.body.fromApi;
 const fromMe = req.body.fromMe;
 
@@ -14,11 +21,6 @@ if (fromApi || fromMe) {
   return res.sendStatus(200);
 }
 
-
-
-router.post("/", async (req, res) => {
-  console.log("📩 Webhook recebido:");
-  console.dir(req.body, { depth: null });
 
   try {
     const from = req.body.phone;
