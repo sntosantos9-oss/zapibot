@@ -7,7 +7,9 @@ const INSTANCE_ID = process.env.INSTANCE_ID;
 const TOKEN = process.env.TOKEN;
 
 router.post("/", async (req, res) => {
+    console.log("📩 Webhook recebido:", req.body);
   try {
+    
     const message = req.body.message;
     const from = message?.from;
     const text = message?.text?.body;
@@ -32,7 +34,9 @@ router.post("/", async (req, res) => {
     headers: {
       "client-token": process.env.CLIENT_TOKEN,
     },
+    
   }
+  
 );
 
 
@@ -44,3 +48,4 @@ router.post("/", async (req, res) => {
 });
 
 module.exports = router;
+
