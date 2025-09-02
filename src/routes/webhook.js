@@ -10,11 +10,26 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_TOKEN = process.env.CLIENT_TOKEN;
 
 const setores = {
-  "RH": { phone: "5583994833333", image: "https://img001.prntscr.com/file/img001/1YQNsTQUTkuTmrPtr3I7zA.png" },
-  "marketing": { phone: "5583994833333", image: "URL_IMAGEM_MARKETING" },
-  "comercial setai": { phone: "5583994833333", image: "URL_IMAGEM_COMERCIAL_SETAI" },
-  "comercial reserve": { phone: "5583994833333", image: "URL_IMAGEM_COMERCIAL_RESERVE" },
-  "financeiro": { phone: "5583994833333", image: "URL_IMAGEM_FINANCEIRO" }
+  "rh": {
+    phone: "5583994833333",
+    image: "https://img001.prntscr.com/file/img001/1YQNsTQUTkuTmrPtr3I7zA.png"
+  },
+  "marketing": {
+    phone: "5583994833333",
+    image: "https://seudominio.com/imagens/marketing.jpg"
+  },
+  "comercial setai": {
+    phone: "5583994833333",
+    image: "https://seudominio.com/imagens/comercial-setai.jpg"
+  },
+  "comercial reserve": {
+    phone: "5583994833333",
+    image: "https://seudominio.com/imagens/comercial-reserve.jpg"
+  },
+  "financeiro": {
+    phone: "5583994833333",
+    image: "https://seudominio.com/imagens/financeiro.jpg"
+  }
 };
 
 const sessoes = {};
@@ -63,21 +78,49 @@ router.post("/", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Etapa 3: identificar setor e enviar imagem+botão
+    // Etapa 3: identificar setor e enviar imagem + botão
     if (sessao.etapa === 3) {
       sessao.mensagens.push(text);
       const resposta = await askGemini(sessao.mensagens.join(" "));
       const setor = identificarSetor(resposta);
+
       if (setor) {
-        const { phone, image } = setores[setor];
-        await axios.post(`https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-list`,
+        const { phone: setorPhone, image } = setores[setor];
+
+        // 1️⃣ Envia imagem do setor
+        await axios.post(
+          `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-image`,
           {
             phone: from,
-            message: `Perfeito, ${sessao.nome}! Clique abaixo para falar com o setor de *${setor.toUpperCase()}*:`,
-            buttonList: { image, buttons: [{ id: "1", label: `Falar com ${setor}` }] }
+            image,
+            caption: `Aqui está o setor *${setor.toUpperCase()}* que pode te ajudar.`
           },
-          { headers: { "client-token": CLIENT_TOKEN, "Content-Type": "application/json" } }
+          { headers: { "client-token": CLIENT_TOKEN } }
         );
+
+        // 2️⃣ Envia botão separado
+        await axios.post(
+          `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-button-actions`,
+          {
+            phone: from,
+            message: `Clique abaixo para falar com o setor de *${setor.toUpperCase()}*:`,
+            buttonActions: [
+              {
+                id: "1",
+                type: "URL",
+                url: `https://wa.me/${setorPhone}`,
+                label: `Falar com ${setor}`
+              }
+            ]
+          },
+          {
+            headers: {
+              "client-token": CLIENT_TOKEN,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+
         sessao.etapa = 4;
         sessao.encerramentoEnviado = false;
         sessoes[from] = sessao;
@@ -91,7 +134,7 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // Etapa 4: encerramento ou retomada imediata
+    // Etapa 4: encerramento ou retomada
     if (sessao.etapa === 4) {
       const agradecimentos = ["obrigado", "valeu", "show", "agradecido"];
       const reabrir = ["sim", "quero", "preciso", "sobre", "gostaria"];
@@ -115,7 +158,6 @@ router.post("/", async (req, res) => {
         return res.sendStatus(200);
       }
 
-      // Mensagem irrelevante ou curta, dar fallback amigável
       await axios.post(`https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}/send-text`,
         { phone: from, message: `Estou por aqui, ${sessao.nome}! Como posso ajudar mais?` },
         { headers: { "client-token": CLIENT_TOKEN } }
